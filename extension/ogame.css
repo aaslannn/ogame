@@ -1,0 +1,102 @@
+.zoro-color {
+    font-weight: bold;
+    font-size: 110%;
+}
+
+.text-brown {
+    color: brown !important;
+}
+
+.text-coral {
+    color: coral !important;
+}
+
+.text-burlywood {
+    color: burlywood !important;
+}
+
+.text-grey {
+    color: grey !important;
+}
+
+.vacation_filter {
+    opacity: 0.5;
+}
+
+span.status_abbr_inactive {
+    color: #8e8e8e !important;
+}
+
+
+#ui-id-16 .msg_sender_label,
+#ui-id-16 .msg_sender {
+    display: none;
+}
+
+#ui-id-16 .msg_content > br:nth-child(1),
+#ui-id-16 .msg_content > br:nth-child(3),
+#ui-id-16 .msg_content > br:last-child {
+    display: none;
+}
+
+#uv-spreading-btn {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+}
+
+#uv_quicksearch {
+    position: fixed;
+    top: 10px;
+    right: 60px;
+}
+
+#planetbarcomponent #myPlanets {
+    width: 347px !important;
+}
+
+#planetbarcomponent #rechts #myPlanets .smallplanet {
+    float: left;
+}
+
+.uv-idletimer-toggle {
+    display: none;
+}
+
+#ingamepage #pageContent,
+.ogame #pageContent {
+    width: 1000px;
+    margin-left: 400px;
+}
+
+#advicebarcomponent div#banner_skyscraper {
+    position: absolute;
+    top: -400px;
+    left: 1205px;
+}
+
+.zoro-check-debris {
+    position: fixed;
+    left: 20px;
+    top: 50px;
+    display: grid;
+    z-index: 100000;
+}
+
+.zoro-check-debris li {
+    padding: 5px;
+}
+
+.zoro-check-debris .zoro-debris-close {
+    margin-left: 20px;
+}
+
+.zoro-check-debris button {
+    margin-bottom: 5px;
+    cursor: pointer;
+}
+
+.zoro-galaxy-run-button {
+    width: 13%;
+    margin-right: 5px;
+}
