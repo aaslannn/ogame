@@ -19,6 +19,26 @@
     color: grey !important;
 }
 
+.text-green {
+    color: green !important;;
+}
+
+.text-blue {
+    color: rgb(93, 174, 217) !important;;
+}
+
+.text-red {
+    color: red !important;;
+}
+
+.display-none {
+    display: none;
+}
+
+.display-inline {
+    display: inline;
+}
+
 .vacation_filter {
     opacity: 0.5;
 }
@@ -39,7 +59,7 @@ span.status_abbr_inactive {
     display: none;
 }
 
-#uv-spreading-btn {
+#top #uv-spreading-btn {
     position: fixed;
     top: 10px;
     right: 10px;
@@ -77,18 +97,22 @@ span.status_abbr_inactive {
 
 .zoro-check-debris {
     position: fixed;
-    left: 20px;
+    left: 0px;
     top: 50px;
     display: grid;
     z-index: 100000;
+}
+
+.zoro-check-debris > div {
+    width: 250px;
 }
 
 .zoro-check-debris li {
     padding: 5px;
 }
 
-.zoro-check-debris .zoro-debris-close {
-    margin-left: 20px;
+.zoro-check-debris .zoro-debris-action {
+    margin-left: 10px;
 }
 
 .zoro-check-debris button {
@@ -98,5 +122,8 @@ span.status_abbr_inactive {
 
 .zoro-galaxy-run-button {
     width: 13%;
-    margin-right: 5px;
+}
+
+.zoro-galaxy-run-label{
+    margin-left: 10px;
 }
