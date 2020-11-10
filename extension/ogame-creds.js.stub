@@ -1,0 +1,14 @@
+var fn = function () {
+    'use strict';
+    window.zoro = window.zoro || {
+        pushover: {
+            token: '',
+            user: ''
+        }
+    };
+};
+
+var script = document.createElement('script');
+script.textContent = '(' + fn + ')()';
+(document.head || document.documentElement).appendChild(script);
+script.parentNode.removeChild(script);

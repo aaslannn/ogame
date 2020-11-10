@@ -26,7 +26,8 @@
       "js": [
         "ogame-common.js",
         "ogame-galaxy.js",
-        "ogame-messages.js"
+        "ogame-messages.js",
+        "ogame-fleet.js"
       ]
     }
   ],

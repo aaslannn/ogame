@@ -1,6 +1,7 @@
 var fn = function () {
     'use strict';
-    if (document.location.href.indexOf('empire') !== -1) {
+    if (document.location.href.indexOf('empire') !== -1 ||
+        document.location.href.indexOf('board') !== -1) {
         return;
     } else if (location.href.indexOf('lobby') !== -1) {
         setTimeout(function () {
@@ -15,6 +16,7 @@ var fn = function () {
 
     window.zoro = window.zoro || {
         debrisCheckStatus: {},
+        disablePushNotif: false,
         lobbyInterval: null,
         galaxySystemMap: [
             [1, 1, 250],
@@ -29,7 +31,14 @@ var fn = function () {
             [5, 251, 499],
             [6, 1, 250],
             [6, 251, 499]
-        ]
+        ],
+        potentialLargeDebrisCoord: [
+            // [2, 147],
+            // [5, 189],
+            // [1, 365],
+            // [5, 112]
+        ],
+
     };
 
     const LARGE_DEBRIS_KEY = 'zoro-debris';
@@ -44,6 +53,36 @@ var fn = function () {
     window._storeDebrisCheck = function (debrisCheck) {
         localStorage.setItem('debris_check_' + debrisCheck.galaxy + ':' + debrisCheck.startSystem + ':' + debrisCheck.endSystem, JSON.stringify(debrisCheck));
     };
+
+    window._toNumber = function (str) {
+        return parseInt(str.replaceAll('.', ''));
+    };
+
+    window._calculateColorRed = function (value, baseThreshold, level1 = 3, level2 = 6) {
+        var clazz = '';
+        if (value >= baseThreshold * level2) {
+            clazz = 'text-brown';
+        } else if (value >= baseThreshold * level1) {
+            clazz = 'text-coral';
+        } else if (value >= baseThreshold) {
+            clazz = 'text-burlywood';
+        }
+
+        return clazz;
+    }
+
+    window._calculateColorGreen = function (value, baseThreshold, level1 = 3, level2 = 6) {
+        var clazz = '';
+        if (value >= baseThreshold * level2) {
+            clazz = 'text-dark-green';
+        } else if (value >= baseThreshold * level1) {
+            clazz = 'text-green';
+        } else if (value >= baseThreshold) {
+            clazz = 'text-light-green';
+        }
+
+        return clazz;
+    }
 
     window._getDebrisCheck = function (galaxy, startSystem, endSystem) {
         var json = localStorage.getItem('debris_check_' + galaxy + ':' + startSystem + ':' + endSystem);
@@ -60,6 +99,38 @@ var fn = function () {
             lastTime: null,
             foundDebrisCount: 0
         };
+    };
+
+    window._storePotentialDebrisCheck = function (debrisCheck) {
+        localStorage.setItem('debris_large_potential_check', JSON.stringify(debrisCheck));
+    };
+
+    window._getPotentialDebrisCheck = function () {
+        var json = localStorage.getItem('debris_large_potential_check');
+        if (json != null) {
+            return JSON.parse(json);
+        }
+
+        return {
+            lastTime: null,
+            potentialList: [],
+            potentials: []
+        };
+    };
+
+    window._updatePotentialDebrisItem = function (galaxy, system) {
+        var debrisCheck = _getPotentialDebrisCheck();
+
+        if (debrisCheck.potentials) {
+            debrisCheck.potentials.forEach(function (item) {
+                if (item.galaxy == galaxy && item.galaxy == system) {
+                    item.lastTime = new Date().getTime();
+                    item.foundDebrisCount++;
+
+                    _storePotentialDebrisCheck(debrisCheck);
+                }
+            })
+        }
     };
 
     window._setDebrisSystemBlacklisted = function (event, galaxy, system,) {
@@ -79,6 +150,33 @@ var fn = function () {
     window._isDebrisSystemBlacklisted = function (galaxy, system) {
         return localStorage.getItem(LARGE_DEBRIS_BLACKLIST_KEY + '-' + galaxy + '-' + system) || false;
     };
+
+    window._addToPotentialLargeDebris = function (event, galaxy, system) {
+        if (!_checkPotentialLargeDebrisExists(galaxy, system)) {
+            var debrisCheck = _getPotentialDebrisCheck();
+
+            debrisCheck.potentials = debrisCheck.potentials || [];
+            debrisCheck.potentials.push({galaxy: galaxy, system: system, lastTime: null, foundCount: 0});
+
+            _storePotentialDebrisCheck(debrisCheck);
+        }
+    };
+
+    window._checkPotentialLargeDebrisExists = function (galaxy, system) {
+        var debrisCheck = _getPotentialDebrisCheck();
+
+        var result = false;
+        if (debrisCheck.potentials) {
+            debrisCheck.potentials.forEach(function (item) {
+                if (item.galaxy == galaxy && item.system == system) {
+                    result = true;
+                }
+            })
+        }
+
+        return result;
+    };
+
 
     window._initZoroPanel = function () {
         var zoroPanelElement = document.createElement('div');
@@ -141,6 +239,15 @@ var fn = function () {
             element.innerText = 'B';
             debrisItemElement.appendChild(element);
 
+            if (!_checkPotentialLargeDebrisExists(debrisItem.galaxy, debrisItem.system)) {
+                var element = document.createElement('a');
+                element.className = 'zoro-debris-action text-yellow';
+                element.setAttribute('href', '#');
+                element.setAttribute('onclick', '_addToPotentialLargeDebris(event, ' + debrisItem.galaxy + ',' + debrisItem.system + ')');
+                element.innerText = 'P';
+                debrisItemElement.appendChild(element);
+            }
+
             var debrisCloseElement = document.createElement('a');
             debrisCloseElement.className = 'zoro-debris-action';
             debrisCloseElement.setAttribute('href', '#');
@@ -160,10 +267,14 @@ var fn = function () {
             runCheckDebrisElement.appendChild(_createDebrisCheckElement(_getDebrisCheck(galaxySystem[0], galaxySystem[1], galaxySystem[2])));
         });
 
-        var element = document.createElement('button');
-        element.innerHTML = "Clean Debris List";
-        element.setAttribute('onclick', '_cleanDebrisList()');
-        zoroPanelElement.appendChild(element);
+        runCheckDebrisElement.appendChild(_createPotentialLargeDebrisCheckElement());
+
+        if (_getLargeDebrisList().length > 0) {
+            var element = document.createElement('button');
+            element.innerHTML = "Clean Debris List";
+            element.setAttribute('onclick', '_cleanDebrisList()');
+            zoroPanelElement.appendChild(element);
+        }
     };
 
     window._createDebrisCheckElement = function (debrisStatus) {
@@ -202,6 +313,23 @@ var fn = function () {
                 runCheckDebrisLineElement.appendChild(element);
             }
         }
+
+        return runCheckDebrisLineElement;
+    }
+
+    window._createPotentialLargeDebrisCheckElement = function () {
+        var runCheckDebrisLineElement = document.createElement('div');
+        runCheckDebrisLineElement.id = 'debris-line-potential-checks';
+
+        var element = document.createElement('button');
+        element.style = 'width: 90px;';
+        element.innerHTML = "Potentials";
+        runCheckDebrisLineElement.appendChild(element);
+
+        element = document.createElement('label');
+        element.innerHTML = _getTimeDiff(_getPotentialDebrisCheck().lastTime);
+        element.className = 'zoro-galaxy-run-label';
+        runCheckDebrisLineElement.appendChild(element);
 
         return runCheckDebrisLineElement;
     }
@@ -333,6 +461,55 @@ var fn = function () {
         _storeDebrisCheck(debrisStatus);
     };
 
+    window._addDesktopAlert = function (title, body, actionUrl, sendPushNotif = false) {
+        console.log(body);
+        var notification = new Notification(title, {
+            icon: 'https://s165-tr.ogame.gameforge.com/favicon.ico',
+            body: body,
+        });
+        if (actionUrl) {
+            notification.onclick = function () {
+                window.open(actionUrl);
+            };
+        }
+
+        if (sendPushNotif && !zoro.disablePushNotif) {
+            $.post('https://api.pushover.net/1/messages.json',
+                {
+                    token: zoro.pushover.token,
+                    user: zoro.pushover.user,
+                    device: 'sm-a715f',
+                    title: title,
+                    message: body
+                });
+        }
+    };
+
+    window._handleLobbyRedirect = function (lobbyCallback) {
+        var lastWarn = localStorage.getItem('last_warned_for_lobby');
+        if (!lastWarn || new Date().getTime() - lastWarn > 10000) {
+            _addDesktopAlert('Redirected to Lobby', 'Seems like we are at lobby please do relogin!');
+            localStorage.setItem('last_warned_for_lobby', new Date().getTime());
+        }
+        _startLobbyChecker(lobbyCallback);
+    }
+
+    window._startLobbyChecker = function (lobbyCallback) {
+        if (!zoro.lobbyInterval) {
+            zoro.lobbyCheckRetry = 0;
+            zoro.lobbyInterval = setInterval(function () {
+                $.post('/game/index.php?page=ingame&component=galaxyContent&ajax=1', {galaxy: 1, system: 1})
+                    .done(function () {
+                        if (lobbyCallback) {
+                            lobbyCallback();
+                        }
+                        clearInterval(zoro.lobbyInterval);
+                        zoro.lobbyInterval = null;
+                    });
+            }, Math.min(zoro.lobbyCheckRetry++ * (Math.random() * 5000) + 3000, 30000));
+        }
+    };
+
     var autoLobby = _getUrlParameter('auto-lobby', false);
     var autoCheckDebris = _getUrlParameter('check-debris');
     _initZoroPanel();
@@ -342,6 +519,7 @@ var fn = function () {
             window.location.reload();
         }, Math.random() * 3000 + 2000);
     }
+    zoro.disablePushNotif = _getUrlParameter('disable-push');
 };
 
 var script = document.createElement('script');

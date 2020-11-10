@@ -23,7 +23,19 @@
     color: green !important;;
 }
 
+.text-light-green {
+    color: lightgreen !important;;
+}
+
+.text-dark-green {
+    color: darkgreen !important;;
+}
+
 .text-blue {
+    color: rgb(93, 174, 217) !important;;
+}
+
+.text-yellow {
     color: rgb(93, 174, 217) !important;;
 }
 
