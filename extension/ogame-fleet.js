@@ -8,19 +8,79 @@ var fn = function () {
     const SHIP_TYPE_SC = 202;
     const SHIP_TYPE_LC = 203;
 
+    const MIN_DEU_TO_KEEP_AT_MOON = 3000000;
+
     window._initFleet = function () {
         var zoroPanelElement = document.getElementsByClassName('zoro-check-debris')[0];
 
-        var element = document.createElement('button');
-        element.innerHTML = "Send To Planet";
-        element.setAttribute('onclick', '_sendDeployToPlanet()');
-        zoroPanelElement.appendChild(element);
+        var zoroFleetElement = document.createElement('div');
+        zoroPanelElement.appendChild(zoroFleetElement);
+
+        if (fleetDispatcher.currentPlanet.type === fleetDispatcher.fleetHelper.PLANETTYPE_PLANET) {
+            var element = document.createElement('button');
+            element.innerHTML = "All resources To Moon";
+            element.setAttribute('onclick', '_sendCarriers(fleetDispatcher.fleetHelper.PLANETTYPE_MOON, fleetDispatcher.fleetHelper.MISSION_DEPLOY, true)');
+            zoroFleetElement.appendChild(element);
+
+            element = document.createElement('button');
+            element.innerHTML = "Deploy All Ships To Moon";
+            element.setAttribute('onclick', '_sendAllShips(fleetDispatcher.fleetHelper.PLANETTYPE_MOON, fleetDispatcher.fleetHelper.MISSION_DEPLOY, false)');
+            zoroFleetElement.appendChild(element);
+
+            element = document.createElement('button');
+            element.innerHTML = "Deploy ships&resources To Moon";
+            element.setAttribute('onclick', '_sendAllShips(fleetDispatcher.fleetHelper.PLANETTYPE_MOON, fleetDispatcher.fleetHelper.MISSION_DEPLOY, true)');
+            zoroFleetElement.appendChild(element);
+
+            element = document.createElement('button');
+            element.innerHTML = "Transport All Ships To Moon";
+            element.setAttribute('onclick', '_sendAllShips(fleetDispatcher.fleetHelper.PLANETTYPE_MOON, fleetDispatcher.fleetHelper.MISSION_TRANSPORT, false)');
+            zoroFleetElement.appendChild(element);
+
+            element = document.createElement('button');
+            element.innerHTML = "Transport ships&resources To Moon";
+            element.setAttribute('onclick', '_sendAllShips(fleetDispatcher.fleetHelper.PLANETTYPE_MOON, fleetDispatcher.fleetHelper.MISSION_TRANSPORT, true)');
+            zoroFleetElement.appendChild(element);
+        } else {
+            var element = document.createElement('button');
+            element.innerHTML = "Deploy Carriers To Planet";
+            element.setAttribute('onclick', '_sendCarriers(fleetDispatcher.fleetHelper.PLANETTYPE_PLANET, fleetDispatcher.fleetHelper.MISSION_DEPLOY)');
+            zoroFleetElement.appendChild(element);
+			
+            var element = document.createElement('button');
+            element.innerHTML = "Transport Resources To Planet";
+            element.setAttribute('onclick', '_sendCarriers(fleetDispatcher.fleetHelper.PLANETTYPE_PLANET, fleetDispatcher.fleetHelper.MISSION_TRANSPORT, true)');
+            zoroFleetElement.appendChild(element);
+
+            var element = document.createElement('button');
+            element.innerHTML = "Deploy ships To Planet";
+            element.setAttribute('onclick', '_sendAllShips(fleetDispatcher.fleetHelper.PLANETTYPE_PLANET, fleetDispatcher.fleetHelper.MISSION_DEPLOY, false)');
+            zoroFleetElement.appendChild(element);
+
+            var element = document.createElement('button');
+            element.innerHTML = "Deploy ships&resources To Planet";
+            element.setAttribute('onclick', '_sendAllShips(fleetDispatcher.fleetHelper.PLANETTYPE_PLANET, fleetDispatcher.fleetHelper.MISSION_DEPLOY, true)');
+            zoroFleetElement.appendChild(element);
+
+            var element = document.createElement('button');
+            element.innerHTML = "Transport ships To Planet";
+            element.setAttribute('onclick', '_sendAllShips(fleetDispatcher.fleetHelper.PLANETTYPE_PLANET, fleetDispatcher.fleetHelper.MISSION_TRANSPORT, false)');
+            zoroFleetElement.appendChild(element);
+
+            var element = document.createElement('button');
+            element.innerHTML = "Transport ships&resources To Planet";
+            element.setAttribute('onclick', '_sendAllShips(fleetDispatcher.fleetHelper.PLANETTYPE_PLANET, fleetDispatcher.fleetHelper.MISSION_TRANSPORT, true)');
+            zoroFleetElement.appendChild(element);
+        }
     }
 
     window._checkForFleet = function () {
+        _setFleetLastTime();
+
         _getFleetDataWithAjax(function (dataStr) {
             var fleetElement = $(dataStr);
             var hostileEvents = fleetElement.find('.countDown span.hostile');
+
 
             if (hostileEvents.length > 0) {
                 hostileEvents.each(function (index, element) {
@@ -29,11 +89,11 @@ var fn = function () {
                     var missionType = parseInt(rowElement.attr('data-mission-type'));
                     var eventId = element.attr('id').replace('counter-eventlist-', '');
 
-                    var origin = rowElement.find('.coordsOrigin').text().replaceAll(/\n/g, '');
+                    var origin = rowElement.find('.coordsOrigin').text().replaceAll(/(\r\n|\n|\s)/gm, '');
+                    var dest = rowElement.find('.destCoords').text().replaceAll(/(\r\n|\n|\s)/gm, '');
                     var missionTypeStr = missionType == 6 ? 'espionage' : 'attack';
-                    console.log(origin);
 
-                    _addFleetEvent(origin, eventId, missionTypeStr);
+                    _addFleetEvent(origin, dest, eventId, missionTypeStr);
                 });
             } else {
                 localStorage.removeItem('fleet-events');
@@ -56,7 +116,7 @@ var fn = function () {
         return {}
     };
 
-    window._addFleetEvent = function (origin, eventId, type) {
+    window._addFleetEvent = function (origin, dest, eventId, type) {
         var events = _getFleetEvents();
         var doAlert = false;
         if (!events[origin]) {
@@ -72,7 +132,14 @@ var fn = function () {
         }
 
         if (doAlert) {
-            _addDesktopAlert('Hostile Fleet', 'We detected a hostile ' + type + ' event from ' + origin + '!', null, type == 'attack');
+            var destCoords = dest.replace(']', '').replace('[', '').split(':');
+			var message = _getPlanetName(destCoords[0], destCoords[1], destCoords[2]).toUpperCase() + ': ' + type.toUpperCase() + ' event from ' + origin + '!';
+            _addDesktopAlert('Hostile Fleet', message, null, true, type == 'attack' ? 1 : 0);
+            if (type == 'attack') {
+                setInterval(function () {
+                    _addDesktopAlert('Hostile Fleet', message, null, true, 1);
+                }, 30000);
+            }
         }
 
         localStorage.setItem('fleet-events', JSON.stringify(events));
@@ -92,21 +159,82 @@ var fn = function () {
             });
     }
 
-    window._sendDeployToPlanet = function () {
-        // Mission 4
-        // sendShips(8, galaxy, system, planet, 1, shipCount);
-        // fleetDispatcher.planets
-
+    window._sendCarriers = function (planetType, mission, includeResources) {
         var count = _getMaxShipCount(SHIP_TYPE_SC);
         if (count > 0) {
-            var params = _prepareSendFleetParams(fleetDispatcher.fleetHelper.PLANETTYPE_PLANET, fleetDispatcher.fleetHelper.MISSION_DEPLOY);
+            var params = _prepareSendFleetParams(planetType, mission);
             params['am' + SHIP_TYPE_SC] = count;
+
+            if (includeResources) {
+                var loadedAll = _loadResourceToShips(params, true, currentPlanet.type === fleetDispatcher.fleetHelper.PLANETTYPE_MOON);
+                if (!loadedAll && mission != fleetDispatcher.fleetHelper.MISSION_TRANSPORT) {
+                    params.mission = fleetDispatcher.fleetHelper.MISSION_TRANSPORT;
+                }
+            }
 
             $.post('/game/index.php?page=ingame&component=fleetdispatch&action=sendFleet&ajax=1&asJson=1', params);
         } else {
             alert('No ship to send.')
         }
     }
+
+    window._sendAllShips = function (planetType, mission, includeResources) {
+        var params = _prepareSendFleetParams(planetType, mission);
+        fleetDispatcher.shipsOnPlanet.forEach(function (ship) {
+            params['am' + ship.id] = ship.number;
+        });
+
+        if (includeResources) {
+            _loadResourceToShips(params, false, currentPlanet.type === fleetDispatcher.fleetHelper.PLANETTYPE_MOON);
+        }
+        $.post('/game/index.php?page=ingame&component=fleetdispatch&action=sendFleet&ajax=1&asJson=1', params);
+    }
+
+    window._loadResourceToShips = function (shipsSetParams, notifyForRemainingResources, keepMinDeu) {
+        var totalCapacity = 0;
+        Object.keys(shipsSetParams).forEach(function (key) {
+            if (key.indexOf('am') === 0) {
+                totalCapacity += _getCargoCapacity(parseInt(key.replace('am', ''))) * shipsSetParams[key];
+            }
+        });
+
+        var crystal = fleetDispatcher.crystalOnPlanet;
+        var deu = fleetDispatcher.deuteriumOnPlanet;
+        var metal = fleetDispatcher.metalOnPlanet;
+        if (keepMinDeu) {
+            deu = deu > MIN_DEU_TO_KEEP_AT_MOON ? deu - MIN_DEU_TO_KEEP_AT_MOON : 0;
+        }
+
+        if (totalCapacity < crystal + deu + metal) {
+            if (metal > totalCapacity) {
+                shipsSetParams.metal = totalCapacity;
+                shipsSetParams.crystal = 0;
+                shipsSetParams.deuterium = 0;
+            } else if (metal + crystal > totalCapacity) {
+                shipsSetParams.metal = metal;
+                shipsSetParams.crystal = totalCapacity - metal;
+                shipsSetParams.deuterium = 0;
+            } else {
+                shipsSetParams.metal = metal;
+                shipsSetParams.crystal = crystal;
+                shipsSetParams.deuterium = totalCapacity - metal - crystal;
+            }
+            if (notifyForRemainingResources) {
+                alert('Ship capacity is lower than existing resources, doing transport, please do send fleet again.');
+            }
+            return false;
+        } else {
+            shipsSetParams.metal = metal;
+            shipsSetParams.crystal = crystal;
+            shipsSetParams.deuterium = deu;
+
+            return true;
+        }
+    }
+
+    window._getCargoCapacity = function (type) {
+        return fleetDispatcher.fleetHelper.shipsData[type].cargoCapacity;
+    };
 
     window._prepareSendFleetParams = function (type, mission) {
         return {
@@ -140,7 +268,9 @@ var fn = function () {
         return result;
     }
 
-    _initFleet();
+    if (window.fleetDispatcher) {
+        _initFleet();
+    }
     var autoCheckFleet = _getUrlParameter('check-fleet');
     if (autoCheckFleet) {
         _checkForFleet();

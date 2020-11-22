@@ -31,16 +31,20 @@
     color: darkgreen !important;;
 }
 
-.text-blue {
-    color: rgb(93, 174, 217) !important;;
+.text-yellow {
+    color: yellow !important;;
 }
 
-.text-yellow {
+.text-blue {
     color: rgb(93, 174, 217) !important;;
 }
 
 .text-red {
     color: red !important;;
+}
+
+.text-white {
+    color: white !important;;
 }
 
 .display-none {

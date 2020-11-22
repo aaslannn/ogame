@@ -1,11 +1,6 @@
 var fn = function () {
     'use strict';
-    window.zoro = window.zoro || {
-        pushover: {
-            token: '',
-            user: ''
-        }
-    };
+    window.zoro = window.zoro || {};
 };
 
 var script = document.createElement('script');

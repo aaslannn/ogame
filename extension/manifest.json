@@ -3,17 +3,19 @@
   "version": "1.0",
   "description": "Better visualisez important points of Ogame UI!",
   "permissions": [
+    "*://*.ogame.gameforge.com/*",
     "storage",
-    "activeTab"
+    "activeTab",
+    "tabs"
   ],
   "background": {
     "scripts": [
       "background.js"
     ],
-    "persistent": false
+    "persistent": true
   },
   "web_accessible_resources": [
-    "ogame.js"
+    "ogame-lobby-bg.js"
   ],
   "content_scripts": [
     {
@@ -25,9 +27,11 @@
       ],
       "js": [
         "ogame-common.js",
+        "ogame-creds.js",
         "ogame-galaxy.js",
         "ogame-messages.js",
-        "ogame-fleet.js"
+        "ogame-fleet.js",
+        "ogame-lobby.js"
       ]
     }
   ],

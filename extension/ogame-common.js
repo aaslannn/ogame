@@ -3,21 +3,18 @@ var fn = function () {
     if (document.location.href.indexOf('empire') !== -1 ||
         document.location.href.indexOf('board') !== -1) {
         return;
-    } else if (location.href.indexOf('lobby') !== -1) {
-        setTimeout(function () {
-            // console.log(document.getElementById('joinGame').childNodes.length)
-            // document.getElementById('joinGame').childNodes[1].click();
-            // setTimeout(function () {
-            //     // window.close();
-            // }, 3000);
-        }, 2000);
-        return;
+    } else if (document.location.href.indexOf('relogin=1') !== -1) {
+        var lastLoginAttempt = localStorage.getItem('last_attempt_for_login');
+        if (!lastLoginAttempt || new Date().getTime() - lastLoginAttempt < 5000) {
+            window.close();
+        }
     }
 
     window.zoro = window.zoro || {
         debrisCheckStatus: {},
         disablePushNotif: false,
         lobbyInterval: null,
+        lobbyCheckMaster: false,
         galaxySystemMap: [
             [1, 1, 250],
             [1, 251, 499],
@@ -30,7 +27,13 @@ var fn = function () {
             [5, 1, 250],
             [5, 251, 499],
             [6, 1, 250],
-            [6, 251, 499]
+            [6, 251, 499],
+            [7, 1, 250],
+            [7, 251, 499],
+            [8, 1, 250],
+            [8, 251, 499],
+            [9, 1, 250],
+            [9, 251, 499]
         ],
         potentialLargeDebrisCoord: [
             // [2, 147],
@@ -38,17 +41,15 @@ var fn = function () {
             // [1, 365],
             // [5, 112]
         ],
-
+        pushover: {
+            token: '',
+            user: ''
+        }
     };
 
     const LARGE_DEBRIS_KEY = 'zoro-debris';
     const LARGE_DEBRIS_BLACKLIST_KEY = 'zoro-debris-blacklist';
-
-    $('body').addClass('zoro-skin');
-
-    $('body').removeClass('uv-skin-messages');
-    $('body').removeClass('uv-feature-spreading');
-    $('body').removeClass('uv-feature-quicksearch');
+	const NEAR_TO_PLANET_THRESHOLD = 20;
 
     window._storeDebrisCheck = function (debrisCheck) {
         localStorage.setItem('debris_check_' + debrisCheck.galaxy + ':' + debrisCheck.startSystem + ':' + debrisCheck.endSystem, JSON.stringify(debrisCheck));
@@ -95,7 +96,7 @@ var fn = function () {
             currentSystem: startSystem,
             startSystem: startSystem,
             endSystem: endSystem,
-            runningDebris: false,
+            runningDebris: true,
             lastTime: null,
             foundDebrisCount: 0
         };
@@ -184,77 +185,10 @@ var fn = function () {
         document.body.appendChild(zoroPanelElement);
 
         var debrisListElement = document.createElement('ul');
+        debrisListElement.className = 'zoro-debris-list';
         zoroPanelElement.appendChild(debrisListElement);
 
-        var debrisList = _getLargeDebrisList();
-        debrisList.forEach(function (debrisItem) {
-            if (debrisItem.collected) {
-                return;
-            }
-
-            var debrisItemElement = document.createElement('li');
-            debrisListElement.appendChild(debrisItemElement);
-
-            var blacklisted = _isDebrisSystemBlacklisted(debrisItem.galaxy, debrisItem.system);
-
-            var debrisAnchorElement = document.createElement('a');
-            debrisAnchorElement.className = 'zoro-debris-item' + (debrisItem.sent ? ' text-blue' : '') + (blacklisted ? ' text-red' : '');
-            debrisAnchorElement.setAttribute('href', _getGalaxyUrl(debrisItem.galaxy, debrisItem.system));
-            debrisAnchorElement.innerText = _getCoordStr(debrisItem.galaxy, debrisItem.system, debrisItem.planet)
-                + ' ' + number_format(debrisItem.metal / 1000000, 1) + 'M Metal + ' + number_format(debrisItem.kristal / 1000000, 1) + 'M Kristal -- '
-                + _getTimeDiff(debrisItem.addedAt);
-            debrisItemElement.appendChild(debrisAnchorElement);
-
-            if (!debrisItem.sent) {
-                var element = document.createElement('a');
-                element.className = 'zoro-debris-action text-blue';
-                element.setAttribute('href', '#');
-                element.setAttribute('onclick', '_setLargeDebrisFieldValue(event, '
-                    + debrisItem.galaxy + ',' + debrisItem.system + ',' + debrisItem.planet + ', "sent", true)');
-                element.innerText = 'S';
-                element.title = 'Filo gönderildi';
-                debrisItemElement.appendChild(element);
-            } else {
-                var element = document.createElement('a');
-                element.className = 'zoro-debris-action text-green';
-                element.setAttribute('href', '#');
-                element.setAttribute('onclick', '_setLargeDebrisFieldValue(event, '
-                    + debrisItem.galaxy + ',' + debrisItem.system + ',' + debrisItem.planet + ', "collected", true)');
-                element.innerText = 'T';
-                element.title = 'Enkaz Toplandı';
-                debrisItemElement.appendChild(element);
-            }
-
-            var element = document.createElement('a');
-            element.className = 'zoro-debris-action text-green' + (blacklisted ? '' : ' display-none');
-            element.setAttribute('href', '#');
-            element.setAttribute('onclick', '_setDebrisSystemWhitelisted(event, ' + debrisItem.galaxy + ',' + debrisItem.system + ')');
-            element.innerText = 'W';
-            debrisItemElement.appendChild(element);
-
-            var element = document.createElement('a');
-            element.className = 'zoro-debris-action text-red' + (blacklisted ? ' display-none' : '');
-            element.setAttribute('href', '#');
-            element.setAttribute('onclick', '_setDebrisSystemBlacklisted(event, ' + debrisItem.galaxy + ',' + debrisItem.system + ')');
-            element.innerText = 'B';
-            debrisItemElement.appendChild(element);
-
-            if (!_checkPotentialLargeDebrisExists(debrisItem.galaxy, debrisItem.system)) {
-                var element = document.createElement('a');
-                element.className = 'zoro-debris-action text-yellow';
-                element.setAttribute('href', '#');
-                element.setAttribute('onclick', '_addToPotentialLargeDebris(event, ' + debrisItem.galaxy + ',' + debrisItem.system + ')');
-                element.innerText = 'P';
-                debrisItemElement.appendChild(element);
-            }
-
-            var debrisCloseElement = document.createElement('a');
-            debrisCloseElement.className = 'zoro-debris-action';
-            debrisCloseElement.setAttribute('href', '#');
-            debrisCloseElement.setAttribute('onclick', '_removeLargeDebris(event, ' + debrisItem.galaxy + ',' + debrisItem.system + ',' + debrisItem.planet + ')');
-            debrisCloseElement.innerText = 'X';
-            debrisItemElement.appendChild(debrisCloseElement);
-        });
+        _addDebrisLineItems(debrisListElement);
 
         var runCheckDebrisElement = document.createElement('div');
         zoroPanelElement.appendChild(runCheckDebrisElement);
@@ -276,6 +210,108 @@ var fn = function () {
             zoroPanelElement.appendChild(element);
         }
     };
+
+    window._addDebrisLineItems = function (debrisListElement) {
+        var debrisList = _getLargeDebrisList();
+        debrisList.forEach(function (debrisItem) {
+            if (debrisItem.collected || debrisItem.ignored || debrisItem.position != 16) {
+                return;
+            }
+
+            _addDebrisLineItem(debrisItem, debrisListElement);
+        });
+
+        debrisList.forEach(function (debrisItem) {
+            if (debrisItem.collected || debrisItem.ignored || debrisItem.position == 16) {
+                return;
+            }
+
+            _addDebrisLineItem(debrisItem, debrisListElement);
+        });
+    }
+
+    window._refreshDebrisLineItems = function () {
+        var listElement = $('.zoro-debris-list');
+        listElement.children().each(function (index, child) {
+            child.remove();
+        })
+
+        _addDebrisLineItems(listElement[0]);
+    };
+
+    window._addDebrisLineItem = function (debrisItem, debrisListElement) {
+        var debrisItemElement = document.createElement('li');
+        debrisListElement.appendChild(debrisItemElement);
+
+        var blacklisted = _isDebrisSystemBlacklisted(debrisItem.galaxy, debrisItem.system);
+
+        var debrisAnchorElement = document.createElement('a');
+        debrisAnchorElement.className = 'zoro-debris-item' + (debrisItem.sent ? ' text-blue' : '') + (blacklisted ? ' text-red' : '');
+        debrisAnchorElement.setAttribute('href', _getGalaxyUrl(debrisItem.galaxy, debrisItem.system));
+        debrisAnchorElement.innerText = _getCoordStr(debrisItem.galaxy, debrisItem.system, debrisItem.planet)
+            + ' ' + number_format(debrisItem.metal / 1000000, 1) + 'M Metal + ' + number_format(debrisItem.kristal / 1000000, 1) + 'M Kristal -- '
+            + _getTimeDiff(debrisItem.addedAt);
+        debrisItemElement.appendChild(debrisAnchorElement);
+
+        if (!debrisItem.sent) {
+            var element = document.createElement('a');
+            element.className = 'zoro-debris-action text-blue';
+            element.setAttribute('href', '#');
+            element.setAttribute('onclick', '_setLargeDebrisFieldValue(event, '
+                + debrisItem.galaxy + ',' + debrisItem.system + ',' + debrisItem.planet + ', "sent", true)');
+            element.innerText = 'S';
+            element.title = 'Filo gönderildi';
+            debrisItemElement.appendChild(element);
+
+            var element = document.createElement('a');
+            element.className = 'zoro-debris-action text-yellow';
+            element.setAttribute('href', '#');
+            element.setAttribute('onclick', '_setLargeDebrisFieldValue(event, '
+                + debrisItem.galaxy + ',' + debrisItem.system + ',' + debrisItem.planet + ', "ignored", true)');
+            element.innerText = 'G';
+            element.title = 'Gizle';
+            debrisItemElement.appendChild(element);
+        } else {
+            var element = document.createElement('a');
+            element.className = 'zoro-debris-action text-green';
+            element.setAttribute('href', '#');
+            element.setAttribute('onclick', '_setLargeDebrisFieldValue(event, '
+                + debrisItem.galaxy + ',' + debrisItem.system + ',' + debrisItem.planet + ', "collected", true)');
+            element.innerText = 'T';
+            element.title = 'Enkaz Toplandı';
+            debrisItemElement.appendChild(element);
+        }
+
+        var element = document.createElement('a');
+        element.className = 'zoro-debris-action text-green' + (blacklisted ? '' : ' display-none');
+        element.setAttribute('href', '#');
+        element.setAttribute('onclick', '_setDebrisSystemWhitelisted(event, ' + debrisItem.galaxy + ',' + debrisItem.system + ')');
+        element.innerText = 'W';
+        debrisItemElement.appendChild(element);
+
+        var element = document.createElement('a');
+        element.className = 'zoro-debris-action text-red' + (blacklisted ? ' display-none' : '');
+        element.setAttribute('href', '#');
+        element.setAttribute('onclick', '_setDebrisSystemBlacklisted(event, ' + debrisItem.galaxy + ',' + debrisItem.system + ')');
+        element.innerText = 'B';
+        debrisItemElement.appendChild(element);
+
+        if (debrisItem.planet === 16 && !_checkPotentialLargeDebrisExists(debrisItem.galaxy, debrisItem.system)) {
+            var element = document.createElement('a');
+            element.className = 'zoro-debris-action text-white';
+            element.setAttribute('href', '#');
+            element.setAttribute('onclick', '_addToPotentialLargeDebris(event, ' + debrisItem.galaxy + ',' + debrisItem.system + ')');
+            element.innerText = 'P';
+            debrisItemElement.appendChild(element);
+        }
+
+        var debrisCloseElement = document.createElement('a');
+        debrisCloseElement.className = 'zoro-debris-action';
+        debrisCloseElement.setAttribute('href', '#');
+        debrisCloseElement.setAttribute('onclick', '_removeLargeDebris(event, ' + debrisItem.galaxy + ',' + debrisItem.system + ',' + debrisItem.planet + ')');
+        debrisCloseElement.innerText = 'X';
+        debrisItemElement.appendChild(debrisCloseElement);
+    }
 
     window._createDebrisCheckElement = function (debrisStatus) {
         var runCheckDebrisLineElement = document.createElement('div');
@@ -310,6 +346,12 @@ var fn = function () {
                 element.style = 'margin-left: 20px;';
                 element.innerHTML = "Stop";
                 element.setAttribute('onclick', '_stopDebrisCheck(' + debrisStatus.galaxy + ',' + debrisStatus.startSystem + ', ' + debrisStatus.endSystem + ')');
+                runCheckDebrisLineElement.appendChild(element);
+            } else {
+                element = document.createElement('button');
+                element.style = 'margin-left: 20px;';
+                element.innerHTML = "Start";
+                element.setAttribute('onclick', '_startDebrisCheck(' + debrisStatus.galaxy + ',' + debrisStatus.startSystem + ', ' + debrisStatus.endSystem + ')');
                 runCheckDebrisLineElement.appendChild(element);
             }
         }
@@ -425,7 +467,7 @@ var fn = function () {
     window._setLargeDebrisFieldValue = function (event, galaxy, system, planet, field, value) {
         if (field == 'sent') {
             $(event.target).prev().addClass('text-blue');
-        } else if (field == 'collected') {
+        } else if (field == 'collected' || field == 'ignored') {
             $(event.target).closest('li').remove();
         }
 
@@ -435,6 +477,8 @@ var fn = function () {
         item[field] = value;
 
         _saveLargeDebrisItems(items);
+
+        _refreshDebrisLineItems();
     };
 
     window._saveLargeDebrisItems = function (items) {
@@ -450,18 +494,18 @@ var fn = function () {
     };
 
     window._stopDebrisCheck = function (galaxy, startSystem, endSystem) {
-        var debrisStatus = zoro.debrisCheckStatus[galaxy + ':' + startSystem + ':' + endSystem];
+        var debrisStatus = _getDebrisCheck(galaxy, startSystem, endSystem);
         debrisStatus.runningDebris = false;
         _storeDebrisCheck(debrisStatus);
     };
 
     window._startDebrisCheck = function (galaxy, startSystem, endSystem) {
-        var debrisStatus = zoro.debrisCheckStatus[galaxy + ':' + startSystem + ':' + endSystem];
+        var debrisStatus = _getDebrisCheck(galaxy, startSystem, endSystem);
         debrisStatus.runningDebris = true;
         _storeDebrisCheck(debrisStatus);
     };
 
-    window._addDesktopAlert = function (title, body, actionUrl, sendPushNotif = false) {
+    window._addDesktopAlert = function (title, body, actionUrl, sendPushNotif = false, priority = 0, sound = null) {
         console.log(body);
         var notification = new Notification(title, {
             icon: 'https://s165-tr.ogame.gameforge.com/favicon.ico',
@@ -474,51 +518,195 @@ var fn = function () {
         }
 
         if (sendPushNotif && !zoro.disablePushNotif) {
+            _setLastNotificationTime();
+
+            var checkerStatus = _getProcessStatuses();
+            if (checkerStatus) {
+                body += checkerStatus;
+            }
+
             $.post('https://api.pushover.net/1/messages.json',
                 {
                     token: zoro.pushover.token,
                     user: zoro.pushover.user,
                     device: 'sm-a715f',
                     title: title,
-                    message: body
+                    message: body,
+                    priority: priority,
+					sound: sound ? sound : (priority == -1 ? 'magic' : (priority == -2 ? 'vibrate' : null))
                 });
         }
     };
 
     window._handleLobbyRedirect = function (lobbyCallback) {
-        var lastWarn = localStorage.getItem('last_warned_for_lobby');
-        if (!lastWarn || new Date().getTime() - lastWarn > 10000) {
-            _addDesktopAlert('Redirected to Lobby', 'Seems like we are at lobby please do relogin!');
-            localStorage.setItem('last_warned_for_lobby', new Date().getTime());
-        }
-        _startLobbyChecker(lobbyCallback);
+        setTimeout(function () {
+            var checkIfMaster = localStorage.getItem('last_checker_master');
+            if (!checkIfMaster || new Date().getTime() - checkIfMaster > 10000) {
+                zoro.lobbyCheckMaster = true;
+                console.log('I am the master here! ' + checkIfMaster + ' at ' + new Date())
+                localStorage.setItem('last_checker_master', new Date().getTime());
+            }
+            _tryLogin();
+
+            setTimeout(function () {
+                _startLobbyChecker(lobbyCallback);
+            }, 2000);
+        }, _getUrlParameter('check-potentials') ? 0 : (_getUrlParameter('check-debris') ? 2000 : 1000));
     }
 
     window._startLobbyChecker = function (lobbyCallback) {
         if (!zoro.lobbyInterval) {
             zoro.lobbyCheckRetry = 0;
             zoro.lobbyInterval = setInterval(function () {
+                zoro.lobbyCheckRetry++;
+
                 $.post('/game/index.php?page=ingame&component=galaxyContent&ajax=1', {galaxy: 1, system: 1})
                     .done(function () {
                         if (lobbyCallback) {
                             lobbyCallback();
                         }
+                        localStorage.removeItem('last_checker_master');
+                        zoro.lobbyCheckMaster = false;
                         clearInterval(zoro.lobbyInterval);
                         zoro.lobbyInterval = null;
+                    })
+                    .fail(function () {
+                        if (zoro.lobbyCheckMaster) {
+                            if (zoro.lobbyCheckRetry % 10 == 5) {
+                                _tryLogin();
+                                return;
+                            }
+
+                            if (zoro.lobbyCheckRetry == 0) {
+                                if (_checkLastWarned('lobby', 10000)) {
+                                    _addDesktopAlert('Redirected to Lobby', 'Seems like we are at lobby please do relogin!');
+                                }
+                            } else if (zoro.lobbyCheckRetry == 10) {
+                                _addDesktopAlert('Redirected to Lobby', 'Seems like we are at lobby please do relogin!', null, true, -2);
+                            }
+                        }
                     });
-            }, Math.min(zoro.lobbyCheckRetry++ * (Math.random() * 5000) + 3000, 30000));
+            }, (Math.random() * 5000) + 2000);
         }
     };
 
-    var autoLobby = _getUrlParameter('auto-lobby', false);
-    var autoCheckDebris = _getUrlParameter('check-debris');
-    _initZoroPanel();
+    window._checkLastWarned = function (key, delay) {
+        let storageKey = 'last_warned_' + key;
+        var lastWarn = localStorage.getItem(storageKey);
+        if (!lastWarn || new Date().getTime() - lastWarn > delay) {
+            localStorage.setItem(storageKey, new Date().getTime());
+            return true;
+        }
 
-    if (autoLobby) {
-        setInterval(function () {
-            window.location.reload();
-        }, Math.random() * 3000 + 2000);
+        return false;
     }
+
+    window._getLastWarned = function (key, delay) {
+        let storageKey = 'last_warned_' + key;
+        var lastWarn = localStorage.getItem(storageKey);
+
+        return !lastWarn || new Date().getTime() - lastWarn > delay;
+    }
+
+    window._tryLogin = function () {
+        if (zoro.lobbyCheckMaster) {
+            var lastLoginAttempt = localStorage.getItem('last_attempt_for_login');
+            let diff = new Date().getTime() - lastLoginAttempt;
+            if (!lastLoginAttempt || diff > 60000) {
+                // Do try to login
+                window.open('https://lobby.ogame.gameforge.com/tr_TR/hub?auto-lobby=1');
+                localStorage.setItem('last_attempt_for_login', new Date().getTime());
+
+                if (!_getLastWarned('mobileAction', 30000)) {
+                    _addDesktopAlert('Re-logged in After Mobile Activity', 'We detected a recent login activity and after waiting 60sec, we re-logged in!', null, true, -1);
+                }
+            }
+
+            if (lastLoginAttempt && diff > 10000 && diff < 60000) {
+                if (_checkLastWarned('mobileAction', 60000)) {
+                    _addDesktopAlert('Mobile Activity Detected', 'Seems like we are at lobby due to mobile activity, we will try in 60 sec!', null, true, -1);
+                }
+            }
+        }
+    }
+
+    window._refreshPlanets = function () {
+        localStorage.setItem('zoro-planets', JSON.stringify(fleetDispatcher.planets))
+    }
+
+    window._getPlanets = function () {
+        var planetsStr = localStorage.getItem('zoro-planets');
+        if (planetsStr) {
+            return JSON.parse(planetsStr);
+        }
+        return [];
+    }
+
+    window._getPlanetName = function (galaxy, system, position) {
+        var result = null;
+        _getPlanets().forEach(function (value) {
+            if (value.galaxy == galaxy && value.system == system && value.position == position && value.type == 1) {
+                result = value.name;
+            }
+        })
+        return result;
+    }
+
+    window._isNearToMyPlanets = function (galaxy, system, maxDiff = NEAR_TO_PLANET_THRESHOLD) {
+        var result = false;
+        _getPlanets().forEach(function (value) {
+            if (value.galaxy == galaxy && system >= value.system - maxDiff && system <= value.system + maxDiff) {
+                result = true;
+            }
+        })
+        return result;
+    }
+
+    window._getProcessStatuses = function (addOk) {
+        var potentialDebrisCheck = _getPotentialDebrisCheck();
+        var potentialStatus = new Date().getTime() - potentialDebrisCheck.lastTime > 900000 ? 'Debris Check: Problem' : (addOk ? '\nDebris Check: OK' : '');
+
+        var fleetStatus = new Date().getTime() - _getFleetLastTime() > 300000 ? 'Fleet Check: Problem' : (addOk ? '\nFleet Check: OK' : '');
+
+        return potentialStatus + fleetStatus;
+    }
+
+    window._setLastNotificationTime = function () {
+        localStorage.setItem('notification_last_time', new Date().getTime());
+    }
+
+    window._getLastNotificationTime = function () {
+        return localStorage.getItem('notification_last_time');
+    }
+
+    window._setFleetLastTime = function () {
+        localStorage.setItem('fleet_check_last_time', new Date().getTime());
+    }
+
+    window._getFleetLastTime = function () {
+        return localStorage.getItem('fleet_check_last_time');
+    }
+
+    window._startCheckerInterval = function () {
+        setInterval(function () {
+            if (new Date().getTime() - _getLastNotificationTime() > 900000) {
+                _addDesktopAlert('Checker Statuses', _getProcessStatuses(true), null, true, -1);
+            }
+        }, 900000); // 15 mins
+    };
+
+    var autoCheckDebris = _getUrlParameter('check-debris');
+    if (location.href.indexOf('lobby') === -1) {
+        $('body').addClass('zoro-skin');
+
+        $('body').removeClass('uv-skin-messages');
+        $('body').removeClass('uv-feature-spreading');
+        $('body').removeClass('uv-feature-quicksearch');
+
+        _initZoroPanel();
+        _startCheckerInterval();
+    }
+
     zoro.disablePushNotif = _getUrlParameter('disable-push');
 };
 

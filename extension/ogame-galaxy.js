@@ -8,7 +8,7 @@ var fn = function () {
     window.zoro = window.zoro || {};
     const MILLION = 1000000;
     const DEBRIS_ALERT_THRESHOLD = 2 * MILLION;
-    const PUSH_ALERT_THRESHOLD = 10 * MILLION;
+    const PUSH_ALERT_THRESHOLD = 2 * MILLION;
     const DEBRIS_RERUN_DELAY = 10000;
     const DEBRIS_RUN_NEXT_SYSTEM_DELAY = 100;
     const AJAX_CALL_CONCURRENCY = 6;
@@ -92,8 +92,10 @@ var fn = function () {
         var result = _addLargeDebris(galaxy, system, planet, metal, kristal, recyclerValue);
 
         if (result) {
-            var message = 'Please visit system ' + galaxy + ':' + system + ':' + planet + ' , we have found ' + parseInt(metal / 1000) + 'K metal and ' + parseInt(kristal / 1000) + 'K kristal!';
-            _addDesktopAlert('OGame Large Debris Found', message, _getGalaxyUrl(galaxy, system), planet == 16 && (metal + kristal > PUSH_ALERT_THRESHOLD));
+            var message = galaxy + ':' + system + ':' + planet + ' , ' + parseInt(metal / 1000) + 'K metal, ' + parseInt(kristal / 1000) + 'K kristal!';
+            var sendNotif = (planet == 16 && metal + kristal > PUSH_ALERT_THRESHOLD) || (_isNearToMyPlanets(galaxy, system, 10) && metal + kristal > PUSH_ALERT_THRESHOLD * 10);
+
+            _addDesktopAlert('OGame Large Debris Found', message, _getGalaxyUrl(galaxy, system), sendNotif, 0, _isNearToMyPlanets(galaxy, system) ? 'cashregister' : null);
         }
     };
 
@@ -168,28 +170,12 @@ var fn = function () {
             });
     }
 
-    window._startLobbyChecker = function (lobbyCallback) {
-        if (!zoro.lobbyInterval) {
-            zoro.lobbyCheckRetry = 0;
-            zoro.lobbyInterval = setInterval(function () {
-                $.post('/game/index.php?page=ingame&component=galaxyContent&ajax=1', {galaxy: 1, system: 1})
-                    .done(function () {
-                        if (lobbyCallback) {
-                            lobbyCallback();
-                        }
-                        clearInterval(zoro.lobbyInterval);
-                        zoro.lobbyInterval = null;
-                    });
-            }, Math.min(zoro.lobbyCheckRetry++ * (Math.random() * 5000) + 3000, 30000));
-        }
-    };
-
     window._continueDebrisCheck = function () {
         zoro.galaxySystemMap.forEach(function (galaxySystem) {
             let debrisStatus = _getDebrisCheck(galaxySystem[0], galaxySystem[1], galaxySystem[2]);
 
-            if (debrisStatus.runningDebris) {
-                console.log(new Date().getTime() - debrisStatus.lastTime);
+            console.log('Starting debris check for ' + galaxySystem[0] + ':' + galaxySystem[1] + '-' + galaxySystem[2] + ' at ' + (new Date().getTime() - debrisStatus.lastTime) + ' ------ ' + JSON.stringify(debrisStatus));
+            if (!debrisStatus.lastTime || debrisStatus.runningDebris) {
                 if (new Date().getTime() - debrisStatus.lastTime > 900000) { // If more than 15 minutes past after last run, start from scratch
                     _checkDebrisThroughGalaxy(galaxySystem[0], galaxySystem[1], galaxySystem[2], true)
                 } else {
