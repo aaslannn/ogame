@@ -49,7 +49,7 @@ var fn = function () {
 
     const LARGE_DEBRIS_KEY = 'zoro-debris';
     const LARGE_DEBRIS_BLACKLIST_KEY = 'zoro-debris-blacklist';
-	const NEAR_TO_PLANET_THRESHOLD = 20;
+    const NEAR_TO_PLANET_THRESHOLD = 20;
 
     window._storeDebrisCheck = function (debrisCheck) {
         localStorage.setItem('debris_check_' + debrisCheck.galaxy + ':' + debrisCheck.startSystem + ':' + debrisCheck.endSystem, JSON.stringify(debrisCheck));
@@ -213,21 +213,55 @@ var fn = function () {
 
     window._addDebrisLineItems = function (debrisListElement) {
         var debrisList = _getLargeDebrisList();
-        debrisList.forEach(function (debrisItem) {
-            if (debrisItem.collected || debrisItem.ignored || debrisItem.position != 16) {
-                return;
-            }
-
+        debrisList.filter(item => item.planet == 16 && !item.collected && !item.ignored).forEach(function (debrisItem) {
             _addDebrisLineItem(debrisItem, debrisListElement);
         });
 
-        debrisList.forEach(function (debrisItem) {
-            if (debrisItem.collected || debrisItem.ignored || debrisItem.position == 16) {
-                return;
-            }
-
+        debrisList.filter(item => item.planet != 16 && !item.collected && !item.ignored).forEach(function (debrisItem) {
             _addDebrisLineItem(debrisItem, debrisListElement);
         });
+    }
+
+    window._cleanLargeDebrisAtSystem = function (galaxy, system, storeTimeElapsed, removeOnlyExpeditions) {
+        _getLargeDebrisList().filter(item => item.galaxy == galaxy && item.system == system && (!removeOnlyExpeditions || item.planet == 16)).forEach(function (debrisItem) {
+            if (storeTimeElapsed && debrisItem.planet == 16 && !debrisItem.sent) {
+                _addTimeElapsed(debrisItem);
+            }
+
+            // _removeLargeDebris(debrisItem.galaxy, debrisItem.system, debrisItem.planet);
+            _setLargeDebrisFieldValue(debrisItem.galaxy, debrisItem.system, debrisItem.planet, 'fetched', true)
+        });
+    }
+
+    window._getAverageTimeElapsed = function (galaxy, system, planet) {
+        var existingList = _getTimeElapsed(galaxy, system, planet);
+        var total = 0;
+        existingList.forEach(function (item) {
+            total += item;
+        });
+
+        return existingList.length > 0 ? _getTimeDiff(total / existingList.length) : 'N/A';
+    }
+
+    window._getTimeElapsed = function (galaxy, system, planet) {
+        let key = 'timeElapsed_' + _getCoordStr(galaxy, system, planet);
+        var existingList = localStorage.getItem(key);
+        if (!existingList) {
+            existingList = [];
+        } else {
+            existingList = JSON.parse(existingList);
+        }
+
+        return existingList;
+    }
+
+    window._addTimeElapsed = function (debrisItem) {
+        var timeElapsed = new Date().getTime() - debrisItem.addedAt;
+        var existingList = _getTimeElapsed(debrisItem.galaxy, debrisItem.system, debrisItem.planet);
+        existingList.push(timeElapsed); // Stores as ms
+
+        let key = 'timeElapsed_' + _getCoordStr(debrisItem.galaxy, debrisItem.system, debrisItem.planet);
+        localStorage.setItem(key, JSON.stringify(existingList));
     }
 
     window._refreshDebrisLineItems = function () {
@@ -250,14 +284,14 @@ var fn = function () {
         debrisAnchorElement.setAttribute('href', _getGalaxyUrl(debrisItem.galaxy, debrisItem.system));
         debrisAnchorElement.innerText = _getCoordStr(debrisItem.galaxy, debrisItem.system, debrisItem.planet)
             + ' ' + number_format(debrisItem.metal / 1000000, 1) + 'M Metal + ' + number_format(debrisItem.kristal / 1000000, 1) + 'M Kristal -- '
-            + _getTimeDiff(debrisItem.addedAt);
+            + _getTimeDiff(debrisItem.addedAt) + (debrisItem.fetched ? ' *' : '');
         debrisItemElement.appendChild(debrisAnchorElement);
 
         if (!debrisItem.sent) {
             var element = document.createElement('a');
             element.className = 'zoro-debris-action text-blue';
             element.setAttribute('href', '#');
-            element.setAttribute('onclick', '_setLargeDebrisFieldValue(event, '
+            element.setAttribute('onclick', '_setLargeDebrisFieldValueClicked(event, '
                 + debrisItem.galaxy + ',' + debrisItem.system + ',' + debrisItem.planet + ', "sent", true)');
             element.innerText = 'S';
             element.title = 'Filo gönderildi';
@@ -266,7 +300,7 @@ var fn = function () {
             var element = document.createElement('a');
             element.className = 'zoro-debris-action text-yellow';
             element.setAttribute('href', '#');
-            element.setAttribute('onclick', '_setLargeDebrisFieldValue(event, '
+            element.setAttribute('onclick', '_setLargeDebrisFieldValueClicked(event, '
                 + debrisItem.galaxy + ',' + debrisItem.system + ',' + debrisItem.planet + ', "ignored", true)');
             element.innerText = 'G';
             element.title = 'Gizle';
@@ -275,7 +309,7 @@ var fn = function () {
             var element = document.createElement('a');
             element.className = 'zoro-debris-action text-green';
             element.setAttribute('href', '#');
-            element.setAttribute('onclick', '_setLargeDebrisFieldValue(event, '
+            element.setAttribute('onclick', '_setLargeDebrisFieldValueClicked(event, '
                 + debrisItem.galaxy + ',' + debrisItem.system + ',' + debrisItem.planet + ', "collected", true)');
             element.innerText = 'T';
             element.title = 'Enkaz Toplandı';
@@ -308,7 +342,7 @@ var fn = function () {
         var debrisCloseElement = document.createElement('a');
         debrisCloseElement.className = 'zoro-debris-action';
         debrisCloseElement.setAttribute('href', '#');
-        debrisCloseElement.setAttribute('onclick', '_removeLargeDebris(event, ' + debrisItem.galaxy + ',' + debrisItem.system + ',' + debrisItem.planet + ')');
+        debrisCloseElement.setAttribute('onclick', '_removeLargeDebrisClicked(event, ' + debrisItem.galaxy + ',' + debrisItem.system + ',' + debrisItem.planet + ')');
         debrisCloseElement.innerText = 'X';
         debrisItemElement.appendChild(debrisCloseElement);
     }
@@ -412,7 +446,16 @@ var fn = function () {
         if (!existing) {
             var items = _getLargeDebrisList();
 
-            items.push({galaxy: galaxy, system: system, planet: planet, metal: metal, kristal: kristal, addedAt: new Date().getTime(), recycler: recycler});
+            items.push({
+                galaxy: galaxy,
+                system: system,
+                planet: planet,
+                metal: metal,
+                kristal: kristal,
+                addedAt: new Date().getTime(),
+                recycler: recycler,
+                fetched: false
+            });
 
             _saveLargeDebrisItems(items);
 
@@ -432,7 +475,11 @@ var fn = function () {
         return items;
     };
 
-    window._removeLargeDebris = function (event, galaxy, system, planet) {
+    window._removeLargeDebrisClicked = function (event, galaxy, system, planet) {
+        _removeLargeDebris(galaxy, system, planet);
+    }
+
+    window._removeLargeDebris = function (galaxy, system, planet) {
         var itemsWithItem = _getLargeDebrisWithItems(galaxy, system, planet);
         var items = itemsWithItem[0];
         var item = itemsWithItem[1];
@@ -464,7 +511,11 @@ var fn = function () {
         return [items, null];
     };
 
-    window._setLargeDebrisFieldValue = function (event, galaxy, system, planet, field, value) {
+    window._setLargeDebrisFieldValueClicked = function (event, galaxy, system, planet, field, value) {
+        _setLargeDebrisFieldValue(galaxy, system, planet, field, value)
+    };
+
+    window._setLargeDebrisFieldValue = function (galaxy, system, planet, field, value) {
         if (field == 'sent') {
             $(event.target).prev().addClass('text-blue');
         } else if (field == 'collected' || field == 'ignored') {
@@ -533,7 +584,7 @@ var fn = function () {
                     title: title,
                     message: body,
                     priority: priority,
-					sound: sound ? sound : (priority == -1 ? 'magic' : (priority == -2 ? 'vibrate' : null))
+                    sound: sound ? sound : (priority == -1 ? 'magic' : (priority == -2 ? 'vibrate' : null))
                 });
         }
     };
@@ -690,7 +741,8 @@ var fn = function () {
     window._startCheckerInterval = function () {
         setInterval(function () {
             if (new Date().getTime() - _getLastNotificationTime() > 900000) {
-                _addDesktopAlert('Checker Statuses', _getProcessStatuses(true), null, true, -1);
+                let status = _getProcessStatuses(true);
+                _addDesktopAlert('Checker Statuses', status, null, true, status.indexOf('Problem') !== -1 ? 1 : -1);
             }
         }, 900000); // 15 mins
     };

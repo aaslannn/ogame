@@ -8,7 +8,7 @@ var fn = function () {
     window.zoro = window.zoro || {};
     const MILLION = 1000000;
     const DEBRIS_ALERT_THRESHOLD = 2 * MILLION;
-    const PUSH_ALERT_THRESHOLD = 2 * MILLION;
+    const PUSH_ALERT_THRESHOLD = 10 * MILLION;
     const DEBRIS_RERUN_DELAY = 10000;
     const DEBRIS_RUN_NEXT_SYSTEM_DELAY = 100;
     const AJAX_CALL_CONCURRENCY = 6;
@@ -93,7 +93,7 @@ var fn = function () {
 
         if (result) {
             var message = galaxy + ':' + system + ':' + planet + ' , ' + parseInt(metal / 1000) + 'K metal, ' + parseInt(kristal / 1000) + 'K kristal!';
-            var sendNotif = (planet == 16 && metal + kristal > PUSH_ALERT_THRESHOLD) || (_isNearToMyPlanets(galaxy, system, 10) && metal + kristal > PUSH_ALERT_THRESHOLD * 10);
+            var sendNotif = (planet == 16 && metal + kristal > PUSH_ALERT_THRESHOLD) || (_isNearToMyPlanets(galaxy, system, 10) && metal + kristal > PUSH_ALERT_THRESHOLD * 5);
 
             _addDesktopAlert('OGame Large Debris Found', message, _getGalaxyUrl(galaxy, system), sendNotif, 0, _isNearToMyPlanets(galaxy, system) ? 'cashregister' : null);
         }
@@ -141,8 +141,11 @@ var fn = function () {
             console.log('Debris check stopped at system ' + debrisStatus.currentSystem + ' with found debris count ' + debrisStatus.foundDebrisCount + ' in ' + (new Date().getTime() - debrisStatus.lastTime) / 1000 + ' sec.');
         } else {
             _getGalaxyDataWithAjax(debrisStatus.galaxy, debrisStatus.currentSystem, function (data) {
-                _checkAjaxExpeditionContent(data, debrisStatus.galaxy, debrisStatus.currentSystem, debrisStatus);
-                _checkAjaxPlanetDebrisContent(data, debrisStatus.galaxy, debrisStatus.currentSystem, debrisStatus);
+                var found1 = _checkAjaxExpeditionContent(data, debrisStatus.galaxy, debrisStatus.currentSystem, debrisStatus);
+                var found2 = _checkAjaxPlanetDebrisContent(data, debrisStatus.galaxy, debrisStatus.currentSystem, debrisStatus);
+                if (!found1 && !found2) {
+                    _cleanLargeDebrisAtSystem(debrisStatus.galaxy, debrisStatus.currentSystem, true);
+                }
 
                 setTimeout(function () {
                     debrisStatus.currentSystem++;
@@ -171,10 +174,11 @@ var fn = function () {
     }
 
     window._continueDebrisCheck = function () {
+        $('#pageContent').hide();
+
         zoro.galaxySystemMap.forEach(function (galaxySystem) {
             let debrisStatus = _getDebrisCheck(galaxySystem[0], galaxySystem[1], galaxySystem[2]);
 
-            console.log('Starting debris check for ' + galaxySystem[0] + ':' + galaxySystem[1] + '-' + galaxySystem[2] + ' at ' + (new Date().getTime() - debrisStatus.lastTime) + ' ------ ' + JSON.stringify(debrisStatus));
             if (!debrisStatus.lastTime || debrisStatus.runningDebris) {
                 if (new Date().getTime() - debrisStatus.lastTime > 900000) { // If more than 15 minutes past after last run, start from scratch
                     _checkDebrisThroughGalaxy(galaxySystem[0], galaxySystem[1], galaxySystem[2], true)
@@ -186,6 +190,8 @@ var fn = function () {
     };
 
     window._checkPotentialDebrisCoords = function (concurrency = 1) {
+        $('#pageContent').hide();
+
         var potentialDebrisCheck = _getPotentialDebrisCheck();
         potentialDebrisCheck.lastTime = new Date().getTime();
         _storePotentialDebrisCheck(potentialDebrisCheck);
@@ -212,6 +218,8 @@ var fn = function () {
                 var found = _checkAjaxExpeditionContent(data, galaxy, system);
                 if (found) {
                     _updatePotentialDebrisItem(galaxy, system);
+                } else {
+                    _cleanLargeDebrisAtSystem(galaxy, system, true, true);
                 }
 
                 setTimeout(function () {
@@ -256,7 +264,8 @@ var fn = function () {
         var recyclerValue = _toNumber(debrisElement.find('.debris-recyclers').first().text().split(':')[1]);
 
         var found = false;
-        if (kristalValue + metalValue > DEBRIS_ALERT_THRESHOLD) {
+        let total = kristalValue + metalValue;
+        if (((planet == 16 || _isNearToMyPlanets(galaxy, system)) && total > DEBRIS_ALERT_THRESHOLD) || total > DEBRIS_ALERT_THRESHOLD * 4) {
             found = true;
             _processFoundDebris(galaxy, system, metalValue, kristalValue, recyclerValue, planet);
             if (debrisStatus) {

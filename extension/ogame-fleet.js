@@ -46,7 +46,7 @@ var fn = function () {
             element.innerHTML = "Deploy Carriers To Planet";
             element.setAttribute('onclick', '_sendCarriers(fleetDispatcher.fleetHelper.PLANETTYPE_PLANET, fleetDispatcher.fleetHelper.MISSION_DEPLOY)');
             zoroFleetElement.appendChild(element);
-			
+
             var element = document.createElement('button');
             element.innerHTML = "Transport Resources To Planet";
             element.setAttribute('onclick', '_sendCarriers(fleetDispatcher.fleetHelper.PLANETTYPE_PLANET, fleetDispatcher.fleetHelper.MISSION_TRANSPORT, true)');
@@ -75,6 +75,7 @@ var fn = function () {
     }
 
     window._checkForFleet = function () {
+        $('#pageContent').hide();
         _setFleetLastTime();
 
         _getFleetDataWithAjax(function (dataStr) {
@@ -133,7 +134,7 @@ var fn = function () {
 
         if (doAlert) {
             var destCoords = dest.replace(']', '').replace('[', '').split(':');
-			var message = _getPlanetName(destCoords[0], destCoords[1], destCoords[2]).toUpperCase() + ': ' + type.toUpperCase() + ' event from ' + origin + '!';
+            var message = _getPlanetName(destCoords[0], destCoords[1], destCoords[2]).toUpperCase() + ': ' + type.toUpperCase() + ' event from ' + origin + '!';
             _addDesktopAlert('Hostile Fleet', message, null, true, type == 'attack' ? 1 : 0);
             if (type == 'attack') {
                 setInterval(function () {
@@ -160,10 +161,16 @@ var fn = function () {
     }
 
     window._sendCarriers = function (planetType, mission, includeResources) {
-        var count = _getMaxShipCount(SHIP_TYPE_SC);
-        if (count > 0) {
+        var countSC = _getMaxShipCount(SHIP_TYPE_SC);
+        var countLC = _getMaxShipCount(SHIP_TYPE_LC);
+        if (countSC > 0 || countLC > 0) {
             var params = _prepareSendFleetParams(planetType, mission);
-            params['am' + SHIP_TYPE_SC] = count;
+            if (countSC > 0) {
+                params['am' + SHIP_TYPE_SC] = countSC;
+            }
+            if (countLC > 0) {
+                params['am' + SHIP_TYPE_LC] = countLC;
+            }
 
             if (includeResources) {
                 var loadedAll = _loadResourceToShips(params, true, currentPlanet.type === fleetDispatcher.fleetHelper.PLANETTYPE_MOON);
