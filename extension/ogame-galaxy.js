@@ -7,8 +7,8 @@ var fn = function () {
     var self = window;
     window.zoro = window.zoro || {};
     const MILLION = 1000000;
-    const DEBRIS_ALERT_THRESHOLD = 2 * MILLION;
-    const PUSH_ALERT_THRESHOLD = 10 * MILLION;
+    const DEBRIS_ALERT_THRESHOLD = 10 * MILLION;
+    const PUSH_ALERT_THRESHOLD = 40 * MILLION;
     const DEBRIS_RERUN_DELAY = 10000;
     const DEBRIS_RUN_NEXT_SYSTEM_DELAY = 100;
     const AJAX_CALL_CONCURRENCY = 6;
@@ -92,10 +92,10 @@ var fn = function () {
         var result = _addLargeDebris(galaxy, system, planet, metal, kristal, recyclerValue);
 
         if (result) {
-            var message = galaxy + ':' + system + ':' + planet + ' , ' + parseInt(metal / 1000) + 'K metal, ' + parseInt(kristal / 1000) + 'K kristal!';
+            var message = galaxy + ':' + system + ':' + planet + ' , ' + parseInt(metal / MILLION) + 'M metal, ' + parseInt(kristal / MILLION) + 'M kristal!';
             var sendNotif = (planet == 16 && metal + kristal > PUSH_ALERT_THRESHOLD) || (_isNearToMyPlanets(galaxy, system, 10) && metal + kristal > PUSH_ALERT_THRESHOLD * 5);
 
-            _addDesktopAlert('OGame Large Debris Found', message, _getGalaxyUrl(galaxy, system), sendNotif, 0, _isNearToMyPlanets(galaxy, system) ? 'cashregister' : null);
+            _addDesktopAlert('OGame Large Debris Found', message, _getGalaxyUrl(galaxy, system), sendNotif, metal + kristal > 200 * MILLION ? 0 : -1, _isNearToMyPlanets(galaxy, system) ? 'cashregister' : null);
         }
     };
 

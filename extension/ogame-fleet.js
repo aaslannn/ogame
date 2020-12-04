@@ -18,7 +18,7 @@ var fn = function () {
 
         if (fleetDispatcher.currentPlanet.type === fleetDispatcher.fleetHelper.PLANETTYPE_PLANET) {
             var element = document.createElement('button');
-            element.innerHTML = "All resources To Moon";
+            element.innerHTML = "Deploy all resources To Moon";
             element.setAttribute('onclick', '_sendCarriers(fleetDispatcher.fleetHelper.PLANETTYPE_MOON, fleetDispatcher.fleetHelper.MISSION_DEPLOY, true)');
             zoroFleetElement.appendChild(element);
 
@@ -48,11 +48,6 @@ var fn = function () {
             zoroFleetElement.appendChild(element);
 
             var element = document.createElement('button');
-            element.innerHTML = "Transport Resources To Planet";
-            element.setAttribute('onclick', '_sendCarriers(fleetDispatcher.fleetHelper.PLANETTYPE_PLANET, fleetDispatcher.fleetHelper.MISSION_TRANSPORT, true)');
-            zoroFleetElement.appendChild(element);
-
-            var element = document.createElement('button');
             element.innerHTML = "Deploy ships To Planet";
             element.setAttribute('onclick', '_sendAllShips(fleetDispatcher.fleetHelper.PLANETTYPE_PLANET, fleetDispatcher.fleetHelper.MISSION_DEPLOY, false)');
             zoroFleetElement.appendChild(element);
@@ -63,15 +58,27 @@ var fn = function () {
             zoroFleetElement.appendChild(element);
 
             var element = document.createElement('button');
-            element.innerHTML = "Transport ships To Planet";
+            element.innerHTML = "Transport Resources To Planet";
+            element.setAttribute('onclick', '_sendCarriers(fleetDispatcher.fleetHelper.PLANETTYPE_PLANET, fleetDispatcher.fleetHelper.MISSION_TRANSPORT, true)');
+            zoroFleetElement.appendChild(element);
+
+            var element = document.createElement('button');
+            element.innerHTML = "Transport All Ships To Planet";
             element.setAttribute('onclick', '_sendAllShips(fleetDispatcher.fleetHelper.PLANETTYPE_PLANET, fleetDispatcher.fleetHelper.MISSION_TRANSPORT, false)');
             zoroFleetElement.appendChild(element);
 
             var element = document.createElement('button');
-            element.innerHTML = "Transport ships&resources To Planet";
+            element.innerHTML = "Transport Ships&Resources To Planet";
             element.setAttribute('onclick', '_sendAllShips(fleetDispatcher.fleetHelper.PLANETTYPE_PLANET, fleetDispatcher.fleetHelper.MISSION_TRANSPORT, true)');
             zoroFleetElement.appendChild(element);
         }
+
+        var element = document.createElement('button');
+        element.innerHTML = "Send Expedition";
+        element.setAttribute('onclick', '_sendExpedition()');
+        zoroFleetElement.appendChild(element);
+
+
     }
 
     window._checkForFleet = function () {
@@ -82,7 +89,6 @@ var fn = function () {
             var fleetElement = $(dataStr);
             var hostileEvents = fleetElement.find('.countDown span.hostile');
 
-
             if (hostileEvents.length > 0) {
                 hostileEvents.each(function (index, element) {
                     element = $(element);
@@ -92,9 +98,10 @@ var fn = function () {
 
                     var origin = rowElement.find('.coordsOrigin').text().replaceAll(/(\r\n|\n|\s)/gm, '');
                     var dest = rowElement.find('.destCoords').text().replaceAll(/(\r\n|\n|\s)/gm, '');
+                    var planetType = rowElement.find('.originFleet .moon').length == 1 ? 3 : 1;
                     var missionTypeStr = missionType == 6 ? 'espionage' : 'attack';
 
-                    _addFleetEvent(origin, dest, eventId, missionTypeStr);
+                    _addFleetEvent(origin, dest, eventId, missionTypeStr, planetType);
                 });
             } else {
                 localStorage.removeItem('fleet-events');
@@ -117,11 +124,11 @@ var fn = function () {
         return {}
     };
 
-    window._addFleetEvent = function (origin, dest, eventId, type) {
+    window._addFleetEvent = function (origin, dest, eventId, type, planetType) {
         var events = _getFleetEvents();
-        var doAlert = false;
+        var doAlert = type != 'espionage';
         if (!events[origin]) {
-            events[origin] = {'espionage': {}, 'attack': {}};
+            events[origin] = {'espionage': {}, 'attack': {}, 'silent': false};
             doAlert = true;
         }
 
@@ -132,15 +139,22 @@ var fn = function () {
             }
         }
 
-        if (doAlert) {
-            var destCoords = dest.replace(']', '').replace('[', '').split(':');
-            var message = _getPlanetName(destCoords[0], destCoords[1], destCoords[2]).toUpperCase() + ': ' + type.toUpperCase() + ' event from ' + origin + '!';
-            _addDesktopAlert('Hostile Fleet', message, null, true, type == 'attack' ? 1 : 0);
-            if (type == 'attack') {
-                setInterval(function () {
-                    _addDesktopAlert('Hostile Fleet', message, null, true, 1);
-                }, 30000);
+        var destCoords = dest.replace(']', '').replace('[', '').split(':');
+        let mainFleetPlanet = _getMainFleetPlanet();
+        console.log('We detected an attack!' + origin + '_' + dest);
+        var alertHeader = 'Hostile Fleet';
+        if (type == 'espionage' && _checkLastWarned('recently_escaped' + dest, 30000)) {
+            if (mainFleetPlanet.galaxy == destCoords[0] && mainFleetPlanet.system == destCoords[1] && mainFleetPlanet.type == planetType) {
+                _openMainFleetPage('&emergency-escape=1');
+                alertHeader += ' Emergency Escaped';
+            } else if (_getLastFleetCount(destCoords[0], destCoords[1], destCoords[2], planetType) > 30000) {
+                _openFleetPage(destCoords[0], destCoords[1], destCoords[2], planetType, '&emergency-escape=1')
             }
+        }
+
+        if (doAlert && _checkLastWarned('attack_alert_' + origin, 30000)) {
+            var message = _getPlanetName(destCoords[0], destCoords[1], destCoords[2]).toUpperCase() + ': ' + type.toUpperCase() + ' event from ' + origin + '!';
+            _addDesktopAlert(alertHeader, message, null, true, type == 'attack' ? 1 : 0);
         }
 
         localStorage.setItem('fleet-events', JSON.stringify(events));
@@ -179,10 +193,22 @@ var fn = function () {
                 }
             }
 
-            $.post('/game/index.php?page=ingame&component=fleetdispatch&action=sendFleet&ajax=1&asJson=1', params);
+            _sendShipsWithParams(params);
         } else {
             alert('No ship to send.')
         }
+    }
+
+    window._sendShipsWithParams = function (params) {
+        $.post('/game/index.php?page=ingame&component=fleetdispatch&action=sendFleet&ajax=1&asJson=1', params)
+            .done(function (dataStr) {
+                var data = JSON.parse(dataStr);
+                if (!data.success) {
+                    alert(data.errors[0].message);
+                } else {
+                    window.location.reload();
+                }
+            });
     }
 
     window._sendAllShips = function (planetType, mission, includeResources) {
@@ -194,7 +220,7 @@ var fn = function () {
         if (includeResources) {
             _loadResourceToShips(params, false, currentPlanet.type === fleetDispatcher.fleetHelper.PLANETTYPE_MOON);
         }
-        $.post('/game/index.php?page=ingame&component=fleetdispatch&action=sendFleet&ajax=1&asJson=1', params);
+        _sendShipsWithParams(params);
     }
 
     window._loadResourceToShips = function (shipsSetParams, notifyForRemainingResources, keepMinDeu) {
@@ -275,12 +301,99 @@ var fn = function () {
         return result;
     }
 
+    window._getCurrentPlanetFleetCount = function () {
+        var fleetCount = 0;
+        window.fleetDispatcher.shipsOnPlanet.forEach(function (ship) {
+            fleetCount += ship.number;
+        })
+
+        return fleetCount;
+    }
+
+    window._checkMainFleet = function () {
+        if (_getCurrentPlanetFleetCount() > 50000) {
+            localStorage.setItem('main_fleet', JSON.stringify(currentPlanet));
+        }
+    }
+
+    window._setLastFleetCount = function () {
+        localStorage.setItem('fleet_count_' + _getCoordStr(currentPlanet.galaxy, currentPlanet.system, currentPlanet.position) + '_' + currentPlanet.type, _getCurrentPlanetFleetCount());
+    }
+
+    window._escapeFleet = function () {
+        _checkTarget()
+            .done(function (dataStr) {
+                console.log('Fleet escape requested!');
+                var data = JSON.parse(dataStr);
+                if (data.status == 'success' && data.targetOk) {
+                    console.log('Decided to debris remove!');
+                    _sendAllShips(fleetDispatcher.fleetHelper.PLANETTYPE_DEBRIS, fleetDispatcher.fleetHelper.MISSION_RECYCLE);
+                    setInterval(function () {
+                        var activeEvents = localStorage.getItem('fleet-events');
+                        if (!activeEvents) {
+                            var events = _getActiveEvents();
+
+                            window.close();
+                        }
+                    }, 20000)
+                } else {
+                    console.log('Decided to transport!');
+                    _sendAllShips(currentPlanetType == fleetDispatcher.fleetHelper.PLANETTYPE_MOON ? fleetDispatcher.fleetHelper.PLANETTYPE_PLANET : fleetDispatcher.fleetHelper.PLANETTYPE_MOON, fleetDispatcher.fleetHelper.MISSION_TRANSPORT)
+                    window.close();
+                }
+            })
+            .fail(function () {
+                console.log('Decided to transport!');
+                _sendAllShips(currentPlanetType == fleetDispatcher.fleetHelper.PLANETTYPE_MOON ? fleetDispatcher.fleetHelper.PLANETTYPE_PLANET : fleetDispatcher.fleetHelper.PLANETTYPE_MOON, fleetDispatcher.fleetHelper.MISSION_TRANSPORT)
+                window.close();
+            });
+    }
+
+    window._checkTarget = function () {
+        return $.post('/game/index.php?page=ingame&component=fleetdispatch&action=checkTarget&ajax=1&asJson=1', {am209: 1, galaxy: currentPlanet.galaxy, system: currentPlanet.system, position: currentPlanet.position, type: 2, union: 0});
+    }
+
+    window._sendExpedition = function () {
+        var randValue = Math.random();
+        var fleetId = randValue < 0.33 ? 614 : (randValue < 0.66 ? 1296 : 1297);
+        fleetDispatcher.standardFleets.forEach(function (fleet) {
+            if (fleet.id == fleetId) {
+                var params = _prepareSendFleetParams(fleetDispatcher.fleetHelper.PLANETTYPE_PLANET, fleetDispatcher.fleetHelper.MISSION_EXPEDITION);
+                params.position = 16;
+                params.holdingtime = 1;
+                for (var shipId in fleet.ships) {
+                    let countOfShips = fleet.ships[shipId];
+                    if (countOfShips > 0) {
+                        params['am' + shipId] = countOfShips;
+                    }
+                }
+                _sendShipsWithParams(params);
+            }
+        })
+    }
+
     if (window.fleetDispatcher) {
         _initFleet();
+        setTimeout(function () {
+            _refreshPlanets();
+        }, 1000);
+        _checkMainFleet();
+        _setLastFleetCount();
     }
     var autoCheckFleet = _getUrlParameter('check-fleet');
     if (autoCheckFleet) {
         _checkForFleet();
+    }
+
+    var emergencyEscape = _getUrlParameter('emergency-escape');
+    if (emergencyEscape) {
+        setTimeout(function () {
+            if (_getCurrentPlanetFleetCount() > 30000) {
+                _escapeFleet();
+            } else {
+                console.log('Not escaping as no major fleet is here');
+            }
+        }, 2000)
     }
 };
 

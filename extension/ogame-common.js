@@ -50,6 +50,7 @@ var fn = function () {
     const LARGE_DEBRIS_KEY = 'zoro-debris';
     const LARGE_DEBRIS_BLACKLIST_KEY = 'zoro-debris-blacklist';
     const NEAR_TO_PLANET_THRESHOLD = 20;
+    const MINUTES = 60 * 1000;
 
     window._storeDebrisCheck = function (debrisCheck) {
         localStorage.setItem('debris_check_' + debrisCheck.galaxy + ':' + debrisCheck.startSystem + ':' + debrisCheck.endSystem, JSON.stringify(debrisCheck));
@@ -576,6 +577,12 @@ var fn = function () {
                 body += checkerStatus;
             }
 
+            // Do not warn me before 7 for low priority activities, but do not miss attacks
+            if (new Date().getHours() < 7 && priority != 1) {
+                priority = -1;
+                sound = null;
+            }
+
             $.post('https://api.pushover.net/1/messages.json',
                 {
                     token: zoro.pushover.token,
@@ -641,6 +648,11 @@ var fn = function () {
         }
     };
 
+    window._cleanCoordsStr = function (coordsStr) {
+        var coords = coordsStr.replace(/[\[\]]/g, '').split(':');
+        return {galaxy: coords[0], system: coords[1], position: coords[2]};
+    }
+
     window._checkLastWarned = function (key, delay) {
         let storageKey = 'last_warned_' + key;
         var lastWarn = localStorage.getItem(storageKey);
@@ -682,7 +694,30 @@ var fn = function () {
     }
 
     window._refreshPlanets = function () {
-        localStorage.setItem('zoro-planets', JSON.stringify(fleetDispatcher.planets))
+        var planets = fleetDispatcher.planets;
+        $('#planetList .smallplanet').each(function (index, element) {
+            element = $(element);
+            var planetId = element.attr('id').replace('planet-', '');
+            var moonHref = element.find('.moonlink').attr('href');
+            if (moonHref) {
+                var moonId = moonHref.substr(moonHref.indexOf('cp=') + 3)
+            }
+            var coords = element.find('.planet-koords').text();
+
+            _setPlanetId(planets, coords, planetId, moonId)
+        });
+        localStorage.setItem('zoro-planets', JSON.stringify(planets))
+    }
+
+    window._setPlanetId = function (planets, coords, id, moonId) {
+        coords = coords.replace(/[\[\]]/g, '').split(':');
+
+        planets.forEach(function (planet) {
+            if (planet.galaxy == coords[0] && planet.system == coords[1] && planet.position == coords[2]) {
+                planet['planetId'] = id;
+                planet['moonId'] = moonId;
+            }
+        })
     }
 
     window._getPlanets = function () {
@@ -698,6 +733,16 @@ var fn = function () {
         _getPlanets().forEach(function (value) {
             if (value.galaxy == galaxy && value.system == system && value.position == position && value.type == 1) {
                 result = value.name;
+            }
+        })
+        return result;
+    }
+
+    window._getPlanetDetail = function (galaxy, system, position, type) {
+        var result = null;
+        _getPlanets().forEach(function (value) {
+            if (value.galaxy == galaxy && value.system == system && value.position == position && value.type == type) {
+                result = value;
             }
         })
         return result;
@@ -742,10 +787,72 @@ var fn = function () {
         setInterval(function () {
             if (new Date().getTime() - _getLastNotificationTime() > 900000) {
                 let status = _getProcessStatuses(true);
-                _addDesktopAlert('Checker Statuses', status, null, true, status.indexOf('Problem') !== -1 ? 1 : -1);
+                _addDesktopAlert('Checker Statuses', status, null, true, status.indexOf('Problem') !== -1 ? 0 : -1);
             }
         }, 900000); // 15 mins
     };
+
+    window._getMainFleetPlanet = function () {
+        return JSON.parse(localStorage.getItem('main_fleet'));
+    }
+
+    window._getLastFleetCount = function (galaxy, system, position, type) {
+        var count = localStorage.getItem('fleet_count_' + _getCoordStr(galaxy, system, position) + '_' + type);
+
+        return count || 0;
+    }
+
+    window._getFleetPageUrl = function (planet) {
+        var detail = _getPlanetDetail(planet.galaxy, planet.system, planet.position, planet.type);
+        return 'https://s156-tr.ogame.gameforge.com/game/index.php?page=ingame&component=fleetdispatch&cp=' + detail[planet.type == 3 /*MOON*/ ? 'moonId' : 'planetId'];
+    }
+
+    window._openMainFleetPage = function (urlSuffix = '') {
+        window.open(_getFleetPageUrl(_getMainFleetPlanet()) + urlSuffix);
+    }
+
+    window._openFleetPage = function (galaxy, system, position, type, urlSuffix = '') {
+        window.open(_getFleetPageUrl({galaxy: galaxy, system: system, position: position, type: type}) + urlSuffix);
+    }
+
+    window._pingFleetPage = function (galaxy, system, position, type) {
+        console.log('Pinging fleet page for ' + _getCoordStr(galaxy, system, position));
+        $.get(_getFleetPageUrl({galaxy: galaxy, system: system, position: position, type: type}));
+    }
+
+    window._pingRandomPlanet = function () {
+        var planets = _getPlanets();
+        var planet = planets[parseInt(planets.length * Math.random())];
+        _pingFleetPage(planet.galaxy, planet.system, planet.position, planet.type);
+    }
+
+    window._getActiveEvents = function () {
+        var events = [];
+        $.get('/game/index.php?page=ingame&component=movement')
+            .done(function (dataStr) {
+                var page = $(dataStr);
+                page.find('.fleetDetails').each(function (index, element) {
+                    var element = $(element);
+                    let origin = _cleanCoordsStr(element.find('.originCoords a').text());
+                    origin.type = element.find('.originPlanet .moon') ? 3 : 1;
+                    let destination = _cleanCoordsStr(element.find('.destinationCoords a').text());
+                    destination.type = element.find('.destinationPlanet .moon').length > 0 ? 3 : (element.find('.destinationPlanet .planetIcon.tf').length > 0 ? 2 : 1);
+                    events.push({
+                        id: element.attr('id').replace('fleet', ''),
+                        origin: origin,
+                        destination: destination,
+                        mission: parseInt(element.attr('data-mission-type')),
+                        returnFlight: element.attr('data-return-flight') == '1',
+                        arrivalTime: element.attr('data-arrival-time') * 1000,
+                        missionText: element.find('.mission').text(),
+                        hostile: element.find('.hostile').length > 0,
+                        reversalLink: element.find('.reversal a').length > 0 ? element.find('.reversal a').attr('href') : null
+                    });
+                });
+            });
+
+        return events;
+    }
 
     var autoCheckDebris = _getUrlParameter('check-debris');
     if (location.href.indexOf('lobby') === -1) {
@@ -757,6 +864,20 @@ var fn = function () {
 
         _initZoroPanel();
         _startCheckerInterval();
+    }
+
+    var pingRandomPlanet = _getUrlParameter('ping-random-planet');
+    if (pingRandomPlanet) {
+        setInterval(function () {
+            _pingRandomPlanet();
+        }, 5 * MINUTES * Math.random() + (3 * MINUTES));
+    }
+
+    var autoClose = _getUrlParameter('auto-close');
+    if (autoClose) {
+        setTimeout(function () {
+            window.close();
+        }, parseInt(autoClose) * 1000);
     }
 
     zoro.disablePushNotif = _getUrlParameter('disable-push');
